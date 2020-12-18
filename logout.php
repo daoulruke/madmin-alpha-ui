@@ -15,6 +15,6 @@ $auth_api = new \Auth0\SDK\API\Authentication( $domain, $client_id );
 
 $auth0->logout();
 
-$return_to = 'http://' . $_SERVER['HTTP_HOST'];
+$return_to = 'https://' . $_SERVER['HTTP_HOST'];
 header('Location: ' . $auth_api->get_logout_link($return_to, $client_id));
 die;
