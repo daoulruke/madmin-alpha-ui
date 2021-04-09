@@ -97,6 +97,25 @@
 
     }
 
+
+    if(isset($_GET['logout']) && $_GET['logout'] == 1) {
+
+        if(isset($_SESSION['portal']['logout_uri'])) {
+            $logout_uri = $_SESSION['portal']['logout_uri'];
+        } else {
+            $logout_uri = $auth0_logout_uri;
+        }
+
+        session_unset();
+        session_destroy();
+
+        header('Location: ' . $logout_uri);
+        //echo $logout_uri;
+        //exit;
+
+    }
+
+
     if(isset($_POST['code'])) {
         $_SESSION['auth0'] = $_POST;
     } else if(isset($_GET['iss'])) {
@@ -227,6 +246,12 @@
 
             } else {
 
+                //No unannounced visitors permitted
+                header('Location: https://kiwiproperty.madmin.com?logout=1');
+                exit;
+
+                $nickname = isset($_SESSION['id_token']['nickname']) ? $_SESSION['id_token']['nickname'] : $_SESSION['id_token']['email'];
+
                 //Create new user
                 $sql = 'INSERT INTO person (
                     name,
@@ -235,7 +260,7 @@
                     third_party_code,
                     status
                 ) VALUES ("' .
-                    $_SESSION['id_token']['nickname'] . '","1","' .
+                    $nickname . '","1","' .
                     $_SESSION['id_token']['email'] . '","' .
                     $_SESSION['id_token']['sub'] . '",
                     "ACTIVE"
@@ -275,6 +300,9 @@
 
     if(isset($_GET['logout']) && $_GET['logout'] == 1) {
 
+    echo $_SESSION['portal']['logout_uri'];
+    exit;
+
         if(isset($_SESSION['portal']['logout_uri'])) {
             $logout_uri = $_SESSION['portal']['logout_uri'];
         } else {
@@ -284,7 +312,8 @@
         session_unset();
         session_destroy();
 
-        header('Location: ' . $logout_uri);
+        //header('Location: ' . $logout_uri);
+        echo $logout_uri;
         exit;
 
     }
@@ -300,6 +329,39 @@
         header('Location: ' . $login_uri);
         exit;
 
+    }
+
+    if(isset($_SESSION['auth_user']['id'])) {
+
+        $attribute_code = 'all:application';
+
+        $sql = 'SELECT application.*
+            FROM application
+            JOIN person
+             ON person.id = ' . $_SESSION['auth_user']['id'] . '
+            JOIN attribute
+             ON attribute.code = "' . $attribute_code . '"
+            JOIN attribute_person
+             ON attribute_person.person_id = person.id
+             AND attribute_person.archived_at IS NULL
+             AND attribute_person.attribute_id = attribute.id
+            JOIN application_firm
+             ON application_firm.application_id = application.id
+             AND application_firm.firm_id = person.firm_id
+            ORDER BY application_firm.sort ASC';
+
+
+        $applications = mysqli_query($mysqli, $sql);
+        $application_count = mysqli_num_rows($applications);
+        //$applications = mysqli_fetch_array($result);
+
+        if(!$application_count) {
+            header('https://kiwiproperty.madmin.com');
+            exit;
+        }
+
+    } else {
+        echo 'NO AUTH-USER: NO APPLICATIONS';
     }
 
 ?>
@@ -343,6 +405,11 @@
                     height: 7vw !important;
                 }
 
+                .q-toolbar {
+                    min-height: 0 !important;
+                    padding: 0 !important;
+                }
+
                 .q-toolbar__title {
                     font-family: 'SFMono' !important;
                     font-size: 3vw !important;
@@ -372,15 +439,26 @@
                     font-size: 3vw;
                 }
 
+                #portal_logo {
+                    height: 4vw;
+                    padding-left: 1.2vw;
+                    object-fit: contain;
+                }
+
             }
 
             @media (orientation: landscape) {
 
                 #masthead {
-                    padding-left: 5vh !important;
-                    padding-right: 5vh !important;
-                    width: 110vh !important;
+                    padding-left: 4vh !important;
+                    padding-right: 4vh !important;
+                    width: 104vh !important;
                     height: 7vh !important;
+                }
+
+                .q-toolbar {
+                    min-height: 0 !important;
+                    padding: 0 !important;
                 }
 
                 .q-toolbar__title {
@@ -397,7 +475,7 @@
                 .nav-icons {
                     padding-left: 2vh !important;
                     padding-right: 2vh !important;
-                    width: 110vh !important;
+                    width: 104vh !important;
                     padding-top: 2vh !important;
                     font-size: 10vh !important;
                 }
@@ -412,6 +490,12 @@
 
                 .app-label {
                     font-size: 2.4vh;
+                }
+
+                #portal_logo {
+                    height: 4vh;
+                    padding-left: 1.2vh
+                    object-fit: contain;
                 }
 
             }
@@ -439,11 +523,29 @@
                 width:100%;
             }
 
+            .overlay-yellow {
+                color: yellow;
+                font-weight: bold;
+                font-size: 50%;
+                position: absolute;
+                z-index:100;
+                transform: rotate(-45deg);
+            }
+
+            .overlay-black {
+                color: black;
+                font-weight: bold;
+                font-size: 60%;
+                position: absolute;
+                z-index:99;
+                transform: rotate(-45deg);
+            }
+
         </style>
 
     </head>
 
-    <body>
+    <body style="background-color:white">
 
         <div id="q-app">
             <template>
@@ -458,13 +560,23 @@
                             <div>
 
                                 <q-header class="bg-dark row justify-center">
-                                    <div id="masthead" class="row bg-dark text-white justify-between">
+                                    <div id="masthead" class="row text-white">
+
                                         <q-toolbar>
-                                            <!--<q-btn class="head-icon" dense flat round icon="album" @click="left = !left"></q-btn>-->
-                                            <img @click="leftDrawer = !leftDrawer" style="height:5vh;object-fit: contain" src="<?php echo $_SESSION['portal']['logo_base64']; ?>">
-                                            <q-toolbar-title style="width:50%;text-align:center">PORTAL<?php //echo $_SESSION['portal']['name']; ?></q-toolbar-title>
-                                            <q-btn type="a" href="<?php echo 'https://' . $_SESSION['portal']['subdomain'] . '.' . $_ENV['UI_DOMAIN'] . '?logout=1'; ?>" class="head-icon" dense flat round icon="cancel" @click="rightDrawer = !rightDrawer"></q-btn>
+
+                                            <div class="col-3 text-left">
+                                                <img id="portal_logo" @click="leftDrawer = !leftDrawer" class="vertical-middle" src="<?php echo $_SESSION['portal']['logo_base64']; ?>">
+                                            </div>
+
+                                            <q-toolbar-title class="col-6 text-center">PORTAL<?php //echo $_SESSION['portal']['name']; ?></q-toolbar-title>
+
+                                            <div class="col-3 text-right">
+                                                <q-btn @click="rightDrawer = !rightDrawer" class="head-icon" dense flat round icon="account_circle"></q-btn>
+                                                <q-btn title="SIGN OUT" type="a" href="<?php echo 'https://' . $_SESSION['portal']['subdomain'] . '.' . $_ENV['UI_DOMAIN'] . '?logout=1'; ?>" class="head-icon" dense flat round icon="cancel"></q-btn>
+                                            </div>
+
                                         </q-toolbar>
+
                                     </div>
                                 </q-header>
 
@@ -543,21 +655,21 @@
 
                                     <div id="nav-icons" v-if="liveMode" class="row justify-center nav-icons">
 
-                                        <?php //if($_SESSION['auth_user']['firm_id'] == 1994) : ?>
-
-                                            <!--<a href="https://activate.sitevitals-beta.com/auth/auth0"><div class="madmin-icon"><i aria-hidden="true" role="presentation" class="app-icon col-shrink material-icons q-icon notranslate" style="background-color: rgb(252, 96, 39);">power</i><div class="app-label">ACTIVATE</div></div></a>-->
-                                            <a href="https://apo.kp.net.nz/auth0"><div class="madmin-icon"><i aria-hidden="true" role="presentation" class="app-icon col-shrink material-icons q-icon notranslate" style="background-color: rgb(133, 187, 101);">auto_graph</i><div class="app-label">APO</div></div></a>
-                                            <a href="https://kiwiproperty.sitevitals.net/auth0/index.php"><div class="madmin-icon"><i aria-hidden="true" role="presentation" class="app-icon col-shrink material-icons q-icon notranslate" style="background-color: rgb(50, 228, 253);">domain</i><div class="app-label">SITEVITALS</div></div></a>
-
-                                        <?php //endif; ?>
-
                                         <?php
 
-                                            if($_SESSION['auth_user']['firm_id'] == 1994) {
-                                                $x = 16;
+                                        while($application = mysqli_fetch_array($applications)) {
+
+                                            if($application['type'] == 'TEST') {
+                                                $test_badge = '<div class="overlay-yellow">TEST</div><div class="overlay-black">TEST</div>';
                                             } else {
-                                                $x = 16;
+                                                $test_badge = '';
                                             }
+
+                                            echo '<a href="' . $application['auth_path'] . '"><div class="madmin-icon"><i aria-hidden="true" role="presentation" class="app-icon col-shrink material-icons q-icon notranslate" style="color: ' . $application['color_stroke'] . ';background-color: ' . $application['color_fill'] . ';">' . $application['icon'] . $test_badge . '</i><div class="app-label">' . $application['name'] . '</div></div></a>';
+
+                                        }
+
+                                            $placeholder_count = (20 - $application_count);
 
                                             $file = fopen('../icons/material_design_icons.csv', 'r');
                                             $icons = fgetcsv($file);
@@ -565,15 +677,17 @@
 
                                             $i = 0;
 
-                                            while($i < $x) {
-                                                $icon = $icons[array_rand($icons)];
+                                            $placeholder_count = 1;
+
+                                            while($i < $placeholder_count) {
+                                                //$icon = $icons[array_rand($icons)];
                                                 //echo '<div class="madmin-icon"><q-icon :style="{\'background-color\': getRandomColor()}" class="app-icon col-shrink" name="' . $icon . '"></q-icon><div class="app-label"></div></div>';
                                                 echo '<div class="madmin-icon"><q-icon style="background-color:gainsboro" class="app-icon col-shrink"></q-icon><div class="app-label"></div></div>';
                                                 $i++;
                                             }
 
                                         ?>
-
+                                        <!--
                                         <div class="madmin-icon" @click="liveMode=false;testMode=true;settings=false;">
                                             <i aria-hidden="true" role="presentation" class="app-icon col-shrink material-icons q-icon notranslate" style="background-color: pink;color:black">science</i>
                                             <div class="app-label">TEST</div>
@@ -583,6 +697,7 @@
                                             <i aria-hidden="true" role="presentation" class="app-icon col-shrink material-icons q-icon notranslate" style="background-color:gainsboro;color:grey">lock</i>
                                             <div class="app-label">SETTINGS</div>
                                         </div>
+                                        -->
 
                                     </div>
 
@@ -722,6 +837,8 @@
                             <div class="col-grow"></div>
 
                         </div>
+
+                        <!--<div class="text-center q-pa-lg text-grey-4">&copy; MMXX MADMIN</div>-->
 
                     </q-page-container>
 
